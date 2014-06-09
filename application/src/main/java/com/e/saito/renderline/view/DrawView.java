@@ -3,12 +3,18 @@ package com.e.saito.renderline.view;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewGroup;
+
+import com.coolands.open.PathAnimation;
+import com.e.saito.renderline.app.R;
+import com.e.saito.renderline.data.VerticalLine;
 
 import java.util.ArrayList;
 
@@ -20,40 +26,52 @@ public class DrawView extends View {
     private static final int MODE_ANIMATION = MODE_DRAW + 1;
     private int mMode;
 
-    private float mMarginRate = 10.0f;
+    private Context mContext;
+
+    private final float mMarginRate = 10.0f;
+    private final float mWithinRangeRate = 0.2f;
+    private float mWithinRange;
+    private float mIntervalX;
+
     //private float mMarginX;
     private float mMarginY;
 
-    private int mBaseLineNum;
+    private int mBaseLineNum = 5;
     private int mBaseColor;
+    Matrix mMatrix;
 
 
-    private Path tmpPath;
-    private FloatPoint mStartPoint;
-    private FloatPoint mEndPoint;
+    private ArrayList<Path> mMainPath;
+    private LinePoints mTmpLine;
+    private FloatPoint mTmpStart;
+    private FloatPoint mTmpEnd;
     private Paint mPaint;
-    private ArrayList<LinePoints> mBaseLineList;
+
+    private ArrayList<VerticalLine> mVerticalLines;
+    private ArrayList<LinePoints> mHorizontalLines;
 
 
     public DrawView(Context context) {
         super(context);
-        init();
+        init(context);
     }
 
     public DrawView(Context context, AttributeSet attrs) {
         super(context, attrs);
-        init();
+        init(context);
     }
 
     public DrawView(Context context, AttributeSet attrs, int defStyle) {
         super(context, attrs, defStyle);
-        init();
+        init(context);
     }
 
-    private void init() {
+    private void init(Context context) {
         Log.d("init", "init");
-        tmpPath = new Path();
+        mContext = context;
         mPaint = getLinePaint();
+        mMainPath = new ArrayList<Path>();
+        mMatrix = new Matrix();
     }
 
     public void Setting(int baseLineNum, int baseColor) throws IllegalArgumentException {
@@ -70,15 +88,21 @@ public class DrawView extends View {
         if (w == oldw && h == oldh) {
             return; // nothing to do
         }
-      //  mMarginX = w / mMarginRate;
+        //  mMarginX = w / mMarginRate;
         mMarginY = h / mMarginRate;
-        float intervalX = w / (mBaseLineNum + 1);
+        mIntervalX = w / (mBaseLineNum + 1);
+        mWithinRange = mWithinRangeRate * mIntervalX;
 
-        mBaseLineList = new ArrayList<LinePoints>(mBaseLineNum);
+        mVerticalLines = new ArrayList<VerticalLine>(mBaseLineNum);
         for (int i = 0; i < mBaseLineNum; i++) {
-            float posX = intervalX * (i+1);
-            LinePoints points = new LinePoints(posX,mMarginY, posX, h - mMarginY);
-            mBaseLineList.add(points);
+            float posX = mIntervalX * (i + 1);
+            VerticalLine line = new VerticalLine(i, posX, mMarginY, h - mMarginY);
+            mVerticalLines.add(line);
+            Path path = new Path();
+            path.moveTo(posX, mMarginY);
+            path.lineTo(posX, h - mMarginY);
+            Log.d("posX", posX + "");
+            mMainPath.add(path);
         }
 
     }
@@ -87,44 +111,71 @@ public class DrawView extends View {
     @Override
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
-        for (LinePoints points : mBaseLineList) {
-            mPaint.setColor(mBaseColor);
-            canvas.drawLine(points.start.x, points.start.y, points.end.x, points.end.y, mPaint);
+//        for (VerticalLine line : mVerticalLines) {
+//            mPaint.setColor(mBaseColor);
+//            canvas.drawLine(line.x, line.startY, line.x, line.endY, mPaint);
+//        }
+        if (!mMainPath.isEmpty()) {
+            mPaint.setColor(Color.GREEN);
+            for (Path path : mMainPath) {
+                canvas.drawPath(path, mPaint);
+            }
         }
 
-        if (!tmpPath.isEmpty()) {
+
+        if (mTmpStart != null && mTmpEnd != null) {
             mPaint.setColor(Color.RED);
-            canvas.drawPath(tmpPath, mPaint);
-        }
-
-        if (mStartPoint != null && mEndPoint != null) {
-            mPaint.setColor(Color.BLUE);
-            canvas.drawLine(mStartPoint.x, mStartPoint.y, mEndPoint.x, mEndPoint.y, mPaint);
+            canvas.drawLine(mTmpStart.x, mTmpStart.y, mTmpEnd.x, mTmpEnd.y, mPaint);
         }
 
     }
 
     @Override
     public boolean onTouchEvent(MotionEvent event) {
-        float x = event.getX();
-        float y = event.getY();
+        float eventX = event.getX();
+        float eventY = event.getY();
         Log.d(getClass().getSimpleName(), "onTouchEvent");
         switch (event.getAction()) {
             case MotionEvent.ACTION_DOWN:
-                mStartPoint = new FloatPoint(x, y);
+                for (VerticalLine line : mVerticalLines) {
+                    if (line.isWithinLine(eventX, mWithinRange)) {
+                        mTmpStart = new FloatPoint(line.x, eventY);
+                        break;
+                    }
+                }
+
                 break;
             case MotionEvent.ACTION_MOVE:
-                mEndPoint = new FloatPoint(x, y);
+                mTmpEnd = new FloatPoint(eventX, eventY);
                 invalidate();
                 break;
             case MotionEvent.ACTION_UP:
-                if (tmpPath.isEmpty()) {
-                    tmpPath.moveTo(x, y);
-                } else {
-                    tmpPath.lineTo(x, y);
+                if (mTmpStart != null) {
+                    for (VerticalLine line : mVerticalLines) {
+                        if (line.isWithinLine(eventX, mWithinRange)) {
+                            if (line.x == mTmpStart.x) {
+                                continue;
+                            }
+                            if (line.isWithinLine(eventX, mWithinRange)) {
+                                float distX  = Math.abs(mTmpStart.x - line.x);
+                                int num = (int)(distX / mIntervalX);
+                                float distY  = Math.abs(mTmpStart.y - eventY);
+                                for (int i = 0; i < num; i++) {
+                                    Log.d("","");
+                                }
+
+
+                                Path path = new Path();
+                                path.moveTo(mTmpStart.x, mTmpStart.y);
+                                path.lineTo(line.x, eventY);
+                                mMainPath.add(path);
+                                break;
+                            }
+                        }
+                    }
                 }
-                mEndPoint = null;
-                mStartPoint = null;
+                mTmpStart = null;
+                mTmpEnd = null;
                 invalidate();
                 break;
             default:
@@ -143,6 +194,18 @@ public class DrawView extends View {
         paint.setStrokeJoin(Paint.Join.ROUND);
         return paint;
     }
+
+
+    private void DrawAmidaAnime(Path path) {
+        View view = new View(mContext);
+        view.setLayoutParams(new ViewGroup.LayoutParams(6, 6));
+        view.setBackgroundResource(mContext.getResources().getColor(R.color.Red));
+        PathAnimation animation = new PathAnimation(path);
+        animation.setRepeatCount(1);
+        animation.setDuration(1000);
+        view.startAnimation(animation);
+    }
+
 
     class FloatPoint {
         float x;
@@ -170,4 +233,5 @@ public class DrawView extends View {
 
         }
     }
+
 }

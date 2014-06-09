@@ -9,7 +9,7 @@ public class FloatPoint {
     public float x;
     public float y;
 
-    public FloatPoint(int x, int y){
+    public FloatPoint(float x, float y){
         this.x = x;
         this.y = y;
     }
