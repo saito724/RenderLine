@@ -11,19 +11,22 @@ import android.util.Log;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.animation.Animation;
 
 import com.coolands.open.PathAnimation;
-import com.e.saito.renderline.app.R;
+import com.e.saito.renderline.data.LineEnd;
+import com.e.saito.renderline.data.Result;
 import com.e.saito.renderline.data.VerticalLine;
 
 import java.util.ArrayList;
+import java.util.Map;
 
 /**
  * Created by e.saito on 2014/06/06.
  */
 public class DrawView extends View {
-    private static final int MODE_DRAW = 1;
-    private static final int MODE_ANIMATION = MODE_DRAW + 1;
+    public static final int MODE_DRAW = 1;
+    public static final int MODE_ANIMATION = MODE_DRAW + 1;
     private int mMode;
 
     private Context mContext;
@@ -34,21 +37,24 @@ public class DrawView extends View {
     private float mIntervalX;
 
     //private float mMarginX;
-    private float mMarginY;
+  //  private float mMarginY;
+
 
     private int mBaseLineNum = 5;
     private int mBaseColor;
     Matrix mMatrix;
-
+    private int mHeight;
+    private int mWidth;
 
     private ArrayList<Path> mMainPath;
     private LinePoints mTmpLine;
     private FloatPoint mTmpStart;
+    private int mTmpStartIndex;
     private FloatPoint mTmpEnd;
     private Paint mPaint;
 
     private ArrayList<VerticalLine> mVerticalLines;
-    private ArrayList<LinePoints> mHorizontalLines;
+  //  private ArrayList<LinePoints> mHorizontalLines;
 
 
     public DrawView(Context context) {
@@ -74,13 +80,20 @@ public class DrawView extends View {
         mMatrix = new Matrix();
     }
 
-    public void Setting(int baseLineNum, int baseColor) throws IllegalArgumentException {
+    //とりあえず本数だけ
+    public void setting(int baseLineNum) throws IllegalArgumentException {
         if (baseLineNum < 2 || baseLineNum > 10) {
             throw new IllegalArgumentException("line number must be between 2 and 10");
         }
+
         mBaseLineNum = baseLineNum;
-        mBaseColor = baseColor;
     }
+
+    public void setMode(int mode){
+        mMode = mode;
+    }
+
+
 
     @Override
     protected void onSizeChanged(int w, int h, int oldw, int oldh) {
@@ -88,23 +101,28 @@ public class DrawView extends View {
         if (w == oldw && h == oldh) {
             return; // nothing to do
         }
-        //  mMarginX = w / mMarginRate;
-        mMarginY = h / mMarginRate;
-        mIntervalX = w / (mBaseLineNum + 1);
-        mWithinRange = mWithinRangeRate * mIntervalX;
+        mHeight = h;
+        mWidth = w;
+        initBase();
 
+    }
+
+    private void initBase(){
+        mMainPath.clear();
+        //  mMarginX = w / mMarginRate;
+        mIntervalX = mWidth / (mBaseLineNum + 1);
+        mWithinRange = mWithinRangeRate * mIntervalX;
         mVerticalLines = new ArrayList<VerticalLine>(mBaseLineNum);
         for (int i = 0; i < mBaseLineNum; i++) {
             float posX = mIntervalX * (i + 1);
-            VerticalLine line = new VerticalLine(i, posX, mMarginY, h - mMarginY);
+            VerticalLine line = new VerticalLine(i, posX, 0, mHeight);
             mVerticalLines.add(line);
             Path path = new Path();
-            path.moveTo(posX, mMarginY);
-            path.lineTo(posX, h - mMarginY);
+            path.moveTo(posX, 0);
+            path.lineTo(posX, mHeight);
             Log.d("posX", posX + "");
             mMainPath.add(path);
         }
-
     }
 
 
@@ -132,6 +150,9 @@ public class DrawView extends View {
 
     @Override
     public boolean onTouchEvent(MotionEvent event) {
+        if(mMode != MODE_DRAW){
+            return false;
+        }
         float eventX = event.getX();
         float eventY = event.getY();
         Log.d(getClass().getSimpleName(), "onTouchEvent");
@@ -139,7 +160,10 @@ public class DrawView extends View {
             case MotionEvent.ACTION_DOWN:
                 for (VerticalLine line : mVerticalLines) {
                     if (line.isWithinLine(eventX, mWithinRange)) {
-                        mTmpStart = new FloatPoint(line.x, eventY);
+                        if(line.devisions.get(new Float(eventY)) == null){
+                            mTmpStart = new FloatPoint(line.x, eventY);
+                            mTmpStartIndex = line.index;
+                        }
                         break;
                     }
                 }
@@ -153,22 +177,18 @@ public class DrawView extends View {
                 if (mTmpStart != null) {
                     for (VerticalLine line : mVerticalLines) {
                         if (line.isWithinLine(eventX, mWithinRange)) {
-                            if (line.x == mTmpStart.x) {
+                            if (line.index == mTmpStartIndex) {
                                 continue;
                             }
                             if (line.isWithinLine(eventX, mWithinRange)) {
-                                float distX  = Math.abs(mTmpStart.x - line.x);
-                                int num = (int)(distX / mIntervalX);
-                                float distY  = Math.abs(mTmpStart.y - eventY);
-                                for (int i = 0; i < num; i++) {
-                                    Log.d("","");
+                                if(line.devisions.get(new Float(eventY)) == null) {
+                                    Path path = new Path();
+                                    path.moveTo(mTmpStart.x, mTmpStart.y);
+                                    mVerticalLines.get(mTmpStartIndex).devisions.put(mTmpStart.y, new LineEnd(line.index, eventY));
+                                    mVerticalLines.get(line.index).devisions.put(eventY, new LineEnd(mTmpStartIndex, mTmpStart.y));
+                                    path.lineTo(line.x, eventY);
+                                    mMainPath.add(path);
                                 }
-
-
-                                Path path = new Path();
-                                path.moveTo(mTmpStart.x, mTmpStart.y);
-                                path.lineTo(line.x, eventY);
-                                mMainPath.add(path);
                                 break;
                             }
                         }
@@ -187,7 +207,7 @@ public class DrawView extends View {
     private Paint getLinePaint() {
         Paint paint = new Paint();
         paint.setAntiAlias(true);
-        paint.setColor(mBaseColor);
+        paint.setColor(Color.BLACK);
         paint.setStyle(Paint.Style.STROKE); //塗りつぶさない　（FULL→塗りつぶす）
         paint.setStrokeWidth(6);
         paint.setStrokeCap(Paint.Cap.ROUND);
@@ -195,14 +215,87 @@ public class DrawView extends View {
         return paint;
     }
 
+//    public Result setResult(int index, Result result) {
+//        Path path = new Path();
+//
+//        VerticalLine line = mVerticalLines.get(index);
+//        float posY = line.startY;
+//        path.moveTo(line.x, posY);
+//        Map.Entry<Float, LineEnd> nextPoint = line.getNextPoint(posY);
+//
+//        while (nextPoint != null) {
+//            Log.d("line.index","message:"+line.index);
+//            LineEnd nextEnd = nextPoint.getValue();
+//            path.lineTo(line.x, posY);//同一線上の分岐点まで
+//
+//            line = mVerticalLines.get(nextEnd.lineIndex); //次の縦線
+//            posY = nextEnd.y;
+//            path.lineTo(line.x, posY);//次の線の接続点まで
+//            nextPoint = line.getNextPoint(posY);
+//        }
+//        path.lineTo(line.x, line.endY);
+//
+//        result.setResultPath(line.index,path);
+//        Log.d("result.index","message:"+line.index);
+//
+//        return result;
+//    }
 
-    private void DrawAmidaAnime(Path path) {
+    public Result setResult(int index, Result result) {
+        ArrayList<Path> pathList = new ArrayList<Path>();
+        Path path = new Path();
+
+        VerticalLine line = mVerticalLines.get(index);
+        float posY = line.startY;
+        path.moveTo(line.x, posY);
+        Map.Entry<Float, LineEnd> nextPoint = line.getNextPoint(posY);
+
+        while (nextPoint != null) {
+            Log.d("line.index", "message:" + line.index);
+            LineEnd nextEnd = nextPoint.getValue();
+            path.lineTo(line.x, posY);//同一線上の分岐点まで
+
+            line = mVerticalLines.get(nextEnd.lineIndex); //次の縦線
+            posY = nextEnd.y;
+            path.lineTo(line.x, posY);//次の線の接続点まで
+            nextPoint = line.getNextPoint(posY);
+        }
+        path.lineTo(line.x, line.endY);
+        pathList.add(path);
+        result.setResultPath(line.index, path);
+        Log.d("result.index", "message:" + line.index);
+
+        return result;
+    }
+
+//    public void drawAmidaAnime(Path path , Animation.AnimationListener listener) {
+//        View view = new View(mContext);
+//        view.setLayoutParams(new ViewGroup.LayoutParams(6, 6));
+//        view.setBackgroundColor(Color.MAGENTA);
+//        Log.d("drawAmidaAnime",view.getWidth()+"");
+//        PathAnimation animation = new PathAnimation(path);
+//        animation.setRepeatCount(1);
+//        animation.setDuration(3000);
+//        animation.setAnimationListener(listener);
+//        view.startAnimation(animation);
+//    }
+
+    //Animationはつかわない
+    public void drawAmidaAnime(Path path , AmidaListener listener) {
+        final Runnable runnable = new Runnable() {
+            @Override
+            public void run() {
+
+            }
+        };
         View view = new View(mContext);
         view.setLayoutParams(new ViewGroup.LayoutParams(6, 6));
-        view.setBackgroundResource(mContext.getResources().getColor(R.color.Red));
+        view.setBackgroundColor(Color.MAGENTA);
+        Log.d("drawAmidaAnime",view.getWidth()+"");
         PathAnimation animation = new PathAnimation(path);
         animation.setRepeatCount(1);
-        animation.setDuration(1000);
+        animation.setDuration(3000);
+        animation.setAnimationListener(listener);
         view.startAnimation(animation);
     }
 
@@ -232,6 +325,10 @@ public class DrawView extends View {
             this.end = end;
 
         }
+    }
+
+    public interface AmidaListener{
+        void onDrawnFinished();
     }
 
 }

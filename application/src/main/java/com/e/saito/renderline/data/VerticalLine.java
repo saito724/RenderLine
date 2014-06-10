@@ -14,13 +14,16 @@ public class VerticalLine {
     //何番目か
     public int index;
     public float x;
+    public float startY;
+    public float endY;
+
+    public TreeMap<Float,LineEnd> devisions;
     public VerticalLine(int index, float x, float startY, float endY) {
         this.index = index;
         this.x = x;
         this.startY = startY;
         this.endY = endY;
-
-        yPoints = new TreeSet<DevisionPoint>();
+        devisions = new TreeMap<Float, LineEnd>();
     }
 
 
@@ -38,11 +41,12 @@ public class VerticalLine {
         return false;
     }
 
-    public float startY;
-    public float endY;
+    public Map.Entry<Float,LineEnd> getNextPoint(float y){
+        Map.Entry<Float,LineEnd> nextPoint = devisions.higherEntry(y);
+        return  nextPoint;
+    }
 
-    public TreeSet<DevisionPoint> yPoints;
-    public TreeMap<Float,endPoint> devisions;
+
 //    /*
 //        @param y yの次のポイントを取得する
 //     */
@@ -51,11 +55,6 @@ public class VerticalLine {
 //        Map.Entry<Float,endPoint> point = devisions.higherEntry(y);
 //
 //    }
-
-    public class endPoint{
-        int lineIndex;
-        float y;
-    }
 
 
 
